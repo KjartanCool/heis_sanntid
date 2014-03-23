@@ -202,11 +202,11 @@ func Door_handler(door_closed_chan chan bool,quit_chan chan bool, same_floor_cha
 		case <- same_floor_chan:
 			if DIRECTION == 0 {
 				Elev_set_speed(300)
-				time.Sleep(20 * time.Millisecond)
+				time.Sleep(30 * time.Millisecond)
 				Elev_set_speed(-300)
 			} else {
 				Elev_set_speed(-300)
-				time.Sleep(20 * time.Millisecond)
+				time.Sleep(30 * time.Millisecond)
 				Elev_set_speed(300)
 			}
 			break

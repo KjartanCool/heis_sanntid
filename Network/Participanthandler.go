@@ -20,7 +20,7 @@ func Update_participants(stat Status_struct, dead_orders chan Status_struct,ligh
 // HELPFUNCTIONS //
 func Update_participant_info(status_struct Status_struct){
 
-	//fmt.Println(Participant_status)
+	fmt.Println(Participant_status)
 	for i := 0; i < len(Participant_status); i++ {
 
 		if Participant_status[i].Ip_tag == status_struct.Ip_tag {
