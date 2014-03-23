@@ -16,7 +16,7 @@ func main() {
 	
 	internal_order := make(chan Order)
 	external_order := make(chan Order)
-	got_order := make(chan Order)
+	got_order := make(chan Order, 1)
 	dead_orders := make(chan Status_struct)
 	job := make(chan Order)
 	participant_info := make(chan Status_struct)
