@@ -10,8 +10,6 @@ import (
 )
 
 func main() {
-	
-
 	fmt.Println("Elevator starting up...")
 	
 	internal_order := make(chan Order)
@@ -29,7 +27,9 @@ func main() {
 
 	Heis_init(door_closed_chan,quit_chan)
 	
-	go Elevator(got_order,external_order,internal_order,job,is_dead,door_closed_chan,floor_sensor_chan,light_chan,quit_chan, same_floor_chan,dead_orders)
+	go Elevator(got_order,external_order,internal_order,job,is_dead,
+				door_closed_chan,floor_sensor_chan,light_chan,quit_chan, 
+				same_floor_chan,dead_orders)
 	go Network(got_order,participant_info,job,light_chan, dead_orders)
 	go Get_internal_signal(internal_order)
 	go Get_external_signal(external_order)

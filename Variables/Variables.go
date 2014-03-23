@@ -5,7 +5,7 @@ import(
 	"fmt"
 )
 
-//"globals"
+// Global variables
 var Order_matrix [4][3]int
 var DIRECTION = 1
 var LAST_FLOOR = 0
@@ -36,7 +36,7 @@ var Bestilling_decode Order
 var Status_decode Status_struct
 type Participant_scores []Participant_score
 
-// Helpfunctions
+// Participants sort functions
 func (slice Participant_scores) Len() int {
 	return len(slice)
 }
@@ -49,7 +49,7 @@ func (slice Participant_scores) Swap(i, j int) {
 	slice[i], slice[j] = slice[j], slice[i]
 }
 
-
+// JSON functions
 func Encode_order(order_encode Order) []byte {
 	order_info, err := json.Marshal(order_encode)
 	Error_Check(err)
@@ -75,9 +75,10 @@ func Decode_order_info(order_decode []byte) {
 	Error_Check(err)
 }
 
+// Error handling
 func Error_Check(err error) {
 	if err != nil {
-		fmt.Println("failed to solve problem: %s\n", err)
+		fmt.Println("failed to solve problem: %s \n", err)
 	}
 }
 

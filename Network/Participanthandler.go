@@ -9,7 +9,7 @@ import (
 
 // Updates status_struct, removes dead elevators and puts its orders on channel
 func Update_participants(stat Status_struct, dead_orders chan Status_struct,light_chan chan [4][3]int) {
-	//fmt.Println(Participant_status)
+	// fmt.Println(Participant_status)
 	Check_Participants_Alive(dead_orders)
 	Update_participant_info(stat)
 	new_global_orders := Update_global_orders()
@@ -34,40 +34,30 @@ func Update_participant_info(status_struct Status_struct){
 
 func Check_Participants_Alive(dead_orders chan Status_struct) {
 	Timestamp_now := time.Now().UnixNano()
-	//fmt.Println("Checking participants alive")
 	for i := 0; i < len(Participant_status); i++ {
 		Time_Difference := Timestamp_now - Participant_status[i].Timestamp
 		lokal_ip,_:=Get_NonLoopBack_Ip();
 		if Time_Difference > 3000000000 && Participant_status[i].Ip_tag != lokal_ip.String() {
-			fmt.Println("checkPArt")
 			if i == (len(Participant_status) - 1){
-				fmt.Println("checkPArt2")
 				slice1 := Participant_status[0:i]
 				slice2 := Participant_status
 				Participant_status = slice1
 				dead_orders <- slice2[i]
-				fmt.Println("FAEN DET GIKK2")
 			} else if i == 0 {
-				fmt.Println("checkPArt3")
 				slice1 := Participant_status[i+1 : len(Participant_status)]
 				slice2 := Participant_status
 				Participant_status = slice1
-				fmt.Println(slice1, "NESTEN DER")
 				dead_orders <- slice2[i]
-				fmt.Println("FAEN DET GIKK3")
 				i--
 
 			} else {
-				fmt.Println("checkPArt4")
 				slice1 := Participant_status[0:i]
 				slice2 := Participant_status[i+1 : len(Participant_status)]
 				slice1 = append(slice1, slice2...)
 				slice3 := Participant_status
 				Participant_status = slice1
 				dead_orders <- slice3[i]
-				fmt.Println("FAEN DET GIKK4")
 				i--
-
 			}
 		} else {
 			continue
