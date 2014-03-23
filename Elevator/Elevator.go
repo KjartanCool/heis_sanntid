@@ -13,7 +13,7 @@ import (
 
 
 // Event-machine for elevator
-func Elevator(got_order chan Order, external_order chan Order, internal_order chan Order, job chan Order, is_dead chan bool, door_closed_chan chan bool, floor_sensor_chan chan int, light_chan chan [4][3]int,quit_chan chan bool,same_floor_chan chan bool) {
+func Elevator(got_order chan Order, external_order chan Order, internal_order chan Order, job chan Order, is_dead chan bool, door_closed_chan chan bool, floor_sensor_chan chan int, light_chan chan [4][3]int,quit_chan chan bool,same_floor_chan chan bool, dead_orders chan Status_struct) {
 	for {
 		//fmt.Println(Participant_status)
 		select {
@@ -76,6 +76,10 @@ func Elevator(got_order chan Order, external_order chan Order, internal_order ch
 			}
 		case k := <-light_chan:
 			Set_ext_lights(k)
+		case f := <-dead_orders:
+			fmt.Println(f, "dead")
+			go Get_dead_elevators_orders(f, got_order)
+			fmt.Println(f, "dead2")
 		case <-time.After(10 * time.Millisecond):
 			continue
 		}
@@ -198,11 +202,11 @@ func Door_handler(door_closed_chan chan bool,quit_chan chan bool, same_floor_cha
 		case <- same_floor_chan:
 			if DIRECTION == 0 {
 				Elev_set_speed(300)
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 				Elev_set_speed(-300)
 			} else {
 				Elev_set_speed(-300)
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 				Elev_set_speed(300)
 			}
 			break

@@ -45,7 +45,6 @@ func Check_Participants_Alive(dead_orders chan Status_struct) {
 				slice1 := Participant_status[0:i]
 				slice2 := Participant_status
 				Participant_status = slice1
-
 				dead_orders <- slice2[i]
 				fmt.Println("FAEN DET GIKK2")
 			} else if i == 0 {

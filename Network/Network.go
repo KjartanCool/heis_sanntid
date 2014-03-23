@@ -10,7 +10,7 @@ import (
 )
 
 // State-machine for network
-func Network(got_order chan Order, participant_info chan Status_struct, dead_orders chan Status_struct, job chan Order,light_chan chan [4][3]int) {
+func Network(got_order chan Order, participant_info chan Status_struct, job chan Order,light_chan chan [4][3]int,dead_orders chan Status_struct) {
 	for {
 		select {
 		case a := <-got_order:
@@ -19,10 +19,6 @@ func Network(got_order chan Order, participant_info chan Status_struct, dead_ord
 		case e := <-participant_info:
 			//fmt.Println(e)
 			Update_participants(e, dead_orders, light_chan)
-		case f := <-dead_orders:
-			fmt.Println(f, "dead")
-			go Get_dead_elevators_orders(f, got_order)
-			fmt.Println(f, "dead2")
 		case <-time.After(10 * time.Millisecond):
 			continue
 
