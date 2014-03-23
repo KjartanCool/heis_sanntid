@@ -1,0 +1,2 @@
+fiksa skrive til fil
+

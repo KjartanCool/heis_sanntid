@@ -1,0 +1,792 @@
+package bestilling
+
+
+
+
+
+import(
+  
+    "fmt"
+    "encoding/json"
+    "time"
+    . "net"
+    . "../Driver"
+    . "../Heis"
+    . "../Nettverk"
+    "sort"
+  
+)
+
+
+    
+
+
+type Network_status struct{
+        is_connected bool;
+        my_ip string;
+        other_ip []string;
+}
+
+ type Order struct{
+    Floor int;
+    Direction string;
+ }
+
+type Status_struct struct {
+    Work_array[4][3]int;
+    DIRECTION int;
+    Last_floor int;
+    Ip_tag string;
+	 Timestamp int64
+}
+
+
+
+type Participant_score struct {
+    Tag string;
+    Score int;
+}
+
+
+ var bestilling_decode Order;
+ var status_decode Status_struct
+ var Participant_status []Status_struct;
+ type Participant_scores []Participant_score;
+
+  
+
+
+  
+ func Error_Check(err error){
+         if err != nil {
+            fmt.Println("failed to solve problem: %s\n", err)
+         }
+ }
+  
+ func Write_order(message []byte){  //HER MÅ DET FIKSES ANG. DØD HEIS!
+        
+        Init_network() //Kan ikke bestille uteordre hvis nettverk nede
+         badAdr,_:=ResolveUDPAddr("udp", "129.241.187.255:23005")
+         badConn,_:=DialUDP("udp",nil,badAdr)
+         badConn.SetWriteDeadline(time.Now().Add(10 * time.Millisecond))
+        _,err := badConn.Write(message)
+       
+       if err != nil {
+            
+        //  fmt.Println(err)
+       }     
+       //fmt.Println(err)
+     
+      //fmt.Println(message)
+      //err=badConn.Close()
+        /* Error_Check(err)
+         
+         
+         
+         badConn.Write(message)
+         //fmt.Println(message)*/
+         err2:=badConn.Close()
+         Error_Check(err2)
+ }
+  
+  
+ func Listen_order(got_order chan Order, illConn *UDPConn){
+         
+         data := make([]byte,1024)
+         n,err := illConn.Read(data)
+         Error_Check(err)
+         Decode_order_info(data[:n])
+         //fmt.Println(bestilling_decode,"HALLLLA")
+        // err2:=illConn.Close()
+        // Error_Check(err2)
+         got_order <- bestilling_decode
+ }
+  
+        func Encode_order(order_encode Order) []byte{
+         order_info,err:=json.Marshal(order_encode)
+         Error_Check(err)
+        
+         return order_info
+ }
+ 
+  func Encode_status_struct(order_encode Status_struct) []byte{
+        
+         order_info,err:=json.Marshal(order_encode)
+         Error_Check(err)
+        
+         return order_info
+ }
+ 
+  func Decode_status_info(stat_decode []byte){
+         err:=json.Unmarshal(stat_decode,&status_decode)
+         Error_Check(err)
+ }
+  
+ func Decode_order_info(order_decode []byte){
+         err:=json.Unmarshal(order_decode,&bestilling_decode)
+         Error_Check(err)
+ }
+ 
+
+  
+  
+  
+  
+
+ 
+  
+ func Get_external_signal(input_order chan Order){ 
+    var recieved_order Order;
+    for i := 0; i<N_FLOORS; i++{
+		if (Elev_get_button_signal(BUTTON_CALL_UP,i) == 1){
+             recieved_order.Floor = i
+             recieved_order.Direction = "up"
+             fmt.Println(recieved_order)
+             input_order <- recieved_order
+            
+       }
+    
+          if (Elev_get_button_signal(BUTTON_CALL_DOWN,i) == 1){
+             recieved_order.Floor = i
+             recieved_order.Direction = "down"
+             input_order <- recieved_order
+          }
+	}
+ }
+  
+ func Broadcast_order(order_send Order){
+    order_info := Encode_order(order_send)
+    Write_order(order_info)  
+ }
+ 
+ 
+ func Handle_order(got_order chan Order){
+    illAdr,_:=ResolveUDPAddr("udp","129.241.187.255:23005")
+    illConn,_:=ListenUDP("udp",illAdr)
+    for{
+        select{
+            default:
+                fmt.Println("BIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIITHCES")
+                Listen_order(got_order, illConn)
+                time.Sleep(1*time.Millisecond)
+       }
+    }
+ }
+ 
+ 
+ 
+  
+
+
+
+ func Add_Order_Matrix(Next_Order Order){
+    if Next_Order.Direction=="up"{
+       fmt.Println("ordermatrix: ute opp")
+       Order_matrix[Next_Order.Floor][0]=1
+    }else if Next_Order.Direction == "down"{
+       fmt.Println("ordermatrix: ute ned")
+       Order_matrix[Next_Order.Floor][1]=1
+    }else{
+      fmt.Println("ordermatrix: inne")
+      Order_matrix[Next_Order.Floor][2]=1
+      fmt.Println(Order_matrix)
+    }
+ }
+ 
+
+      
+    
+    
+    
+     
+     
+     
+func Rasshol(input_order chan Order, command_order chan Order){
+   for{
+        select{
+            default:
+                Get_external_signal(input_order)
+                Get_command_signal(command_order)
+                time.Sleep(10*time.Millisecond)
+       }
+   }
+}
+    
+    
+ 
+
+func Get_command_signal(command_order chan Order){
+    var recieved_order Order;
+    for i := 0; i<N_FLOORS; i++{
+		if (Elev_get_button_signal(BUTTON_COMMAND,i) == 1){
+             recieved_order.Floor = i
+             recieved_order.Direction = "indre"
+             //fmt.Println(recieved_order)
+             command_order <- recieved_order
+            
+          }
+	}
+ }
+ 
+ 
+ 
+ 
+ 
+ func Update_participant_info(status_struct Status_struct){
+ 
+ 
+ 	//fmt.Println(Participant_status)
+ 	for i:=0; i<len(Participant_status);i++ {
+ 		
+ 		if Participant_status[i].Ip_tag==status_struct.Ip_tag{
+ 			Participant_status[i]=status_struct;
+ 			return
+ 			
+ 		}else{
+ 			continue;
+ 		}
+ 	}
+ 
+	Participant_status=append(Participant_status, status_struct);
+	return
+ }
+
+
+
+func Cost_function(participant_status []Status_struct, order Order,job chan Order) {
+      
+	fmt.Println(participant_status);
+   
+    var score_status_array Participant_scores;
+    var score_status Participant_score;
+    var score =0;
+   
+    for i:= 0; i<len(participant_status);i++{
+    	if order.Direction == "up"{
+    		if participant_status[i].Work_array[order.Floor][0] == 1{ // sjekker om jobben allerede er i heisens work_array
+    			return // hvis den er det, driter man i hele orderen
+    		}
+    	}else if order.Direction == "down"{
+    		if participant_status[i].Work_array[order.Floor][1] == 1{ // sjekker om jobben allerede er i heisens work_array
+    			return // hvis den er det, driter man i hele orderen
+    		}
+    	
+    	}
+
+    }
+    
+    
+    for i:=0;i<len(participant_status);i++{
+      score=0;
+      
+      if participant_status[i].Last_floor<=order.Floor && participant_status[i].DIRECTION==0{ //jobben er over heisen && DIR er ned 
+         score=order.Floor - participant_status[i].Last_floor // oppdaterer score utifra avstand
+         
+            for j:=participant_status[i].Last_floor; j>=0;j--{ //iterer fra last floor og kjoerer nedover
+               for k:=0; k<M_BUTTONS; k++{
+               if participant_status[i].Work_array[j][k]==1 {
+                  
+                  score=score + (order.Floor - j);
+               }else{
+               
+               }
+               }
+           
+            }
+            score_status.Tag =participant_status[i].Ip_tag
+            score_status.Score = score
+            score_status_array=append(score_status_array,score_status)
+            fmt.Println(score);
+            fmt.Println(score_status_array);
+         
+      
+      }else if participant_status[i].Last_floor>=order.Floor && participant_status[i].DIRECTION==1{ //jobben er under heisen &&  DIR er opp
+        
+         score=participant_status[i].Last_floor - order.Floor 
+         
+         
+  
+            for j:=participant_status[i].Last_floor; j<N_FLOORS; j++ {
+               for k:=0; k<M_BUTTONS; k++ {
+               
+                  if participant_status[i].Work_array[j][k]==1{
+                  
+                     score=score + (j - order.Floor)
+                  }else{
+                  }
+               
+               }
+ 
+            }
+            
+            score_status.Tag =participant_status[i].Ip_tag
+            score_status.Score = score
+            score_status_array=append(score_status_array,score_status)
+            fmt.Println(score);
+            fmt.Println(score_status_array);
+         
+         
+
+      }else{
+      
+         if participant_status[i].Last_floor<order.Floor { //jobben er over og DIR er opp
+            score = order.Floor - participant_status[i].Last_floor;
+            for j:=participant_status[i].Last_floor; j<= order.Floor; j++ {
+               for k:=0; k<M_BUTTONS; k++ {
+                  if participant_status[i].Work_array[j][k]==1 { //iterer oppover og finner jobber imellom last_floor og order
+                     score = score + (order.Floor - j)
+
+                  }
+               
+               }
+            }
+
+            score_status.Tag =participant_status[i].Ip_tag
+            score_status.Score = score
+            score_status_array=append(score_status_array,score_status)
+            fmt.Println(score);
+            fmt.Println(score_status_array);
+         
+         
+         }else if participant_status[i].Last_floor>order.Floor { //jobben er under og DIR er ned
+            
+            score = participant_status[i].Last_floor - order.Floor;
+            for j:=participant_status[i].Last_floor; j>=order.Floor; j-- { //iterer nedover og finner jobber imellom last_floor og order
+               for k:=0; k<M_BUTTONS; k++ {
+                  if participant_status[i].Work_array[j][k]==1{
+                  
+                     score = score + (j - order.Floor);
+                  }
+
+               }
+
+            }
+
+            score_status.Tag =participant_status[i].Ip_tag
+            score_status.Score = score
+            score_status_array=append(score_status_array,score_status)
+            fmt.Println(score);
+            fmt.Println(score_status_array);
+
+         }
+      }
+    }
+    
+    
+    sort.Sort(score_status_array)
+    low := "HORE"
+    var slice2 Participant_scores
+    for i:=0;i<len(score_status_array);i++{
+    	if(score_status_array[i].Score==score_status_array[0].Score){
+    		slice2 = score_status_array[0:i+1]
+    		fmt.Println(slice2, "DETTE ER SLICE 2 I FORLØKKEN")
+    		low = slice2[0].Tag
+    	}else{
+    	   break
+    	}
+    }
+    for j:= 0;j<len(slice2);j++{
+    	if(slice2[j].Tag < low){
+    		low = slice2[j].Tag
+    	}
+   }
+   fmt.Println(low, "DETTE ER LOW UTENFOR FORLØKKEN, RETT FØR VI BRUKERN")
+   fmt.Println(slice2, "DETTE ER SLICE 2")
+    Local_Tag,_ :=Get_NonLoopBack_Ip()
+    if low==Local_Tag.String() {
+    	fmt.Println("EOERHGOERHGEROGHERØOGH")
+    	job <- order
+    	
+    }else{
+        
+    }
+}
+
+
+func (slice Participant_scores) Len() int{
+    return len(slice);
+}
+
+func (slice Participant_scores) Less(i, j int) bool{
+    return slice[i].Score < slice[j].Score;
+}
+
+func (slice Participant_scores) Swap (i,j int) {
+    slice[i], slice[j] = slice[j], slice[i];
+}
+
+
+
+
+
+// HER ER NETTVERKET
+
+
+func Mekk_status(Order_matrix [4][3]int,DIRECTION int,LAST_FLOOR int) Status_struct {
+	timestamp := time.Now().UnixNano()
+	Local_Tag,_ :=Get_NonLoopBack_Ip()
+	FITTE := Local_Tag.String()
+	return Status_struct{Order_matrix,DIRECTION,LAST_FLOOR,FITTE,timestamp}
+}
+
+
+
+func Broadcast_status(is_dead chan bool){
+        badAdr,_:=ResolveUDPAddr("udp", "129.241.187.255:25000")
+        badConn,_:=DialUDP("udp",nil,badAdr)
+         for{
+            select{
+                default:
+	             status := Mekk_status(Order_matrix,DIRECTION,LAST_FLOOR)
+	             message := Encode_status_struct(status)
+	             Write_status(message, is_dead,badConn)
+	             //fmt.Println(Participant_status)
+	             time.Sleep(10*time.Millisecond) 
+	       }
+ 		}
+
+}
+
+func Write_status(message []byte, is_dead chan bool,badConn *UDPConn){
+	
+     badConn.SetWriteDeadline(time.Now().Add(10 * time.Millisecond))
+
+     _,err := badConn.Write(message)
+     if err != nil {
+        is_dead <- true  
+      //  fmt.Println(err)
+     }     
+     //fmt.Println(err)
+     
+     //fmt.Println(message)
+     //err=badConn.Close()
+     Error_Check(err)
+
+
+}
+
+func Listen_status(participant_info chan Status_struct, Participant_status []Status_struct){
+    illAdr,_:=ResolveUDPAddr("udp","129.241.187.255:25000")
+    illConn,_:=ListenUDP("udp",illAdr)
+	for{
+        select{
+            default:    
+                data := make([]byte,1024)
+                n,err := illConn.Read(data)
+                Error_Check(err)
+                Decode_status_info(data[:n])
+                //fmt.Println(status_decode,"HALLLLA")
+                participant_info <- status_decode
+                time.Sleep(1*time.Millisecond) 
+		     
+	    }
+	}
+}
+
+
+
+
+
+
+
+
+func Check_Participants_Alive(dead chan Status_struct){
+	           Timestamp_now := time.Now().UnixNano()
+	           for i :=0; i <len(Participant_status); i++{
+		        Time_Difference:=Timestamp_now - Participant_status[i].Timestamp;
+		          if Time_Difference>6000000000 {
+		            fmt.Println("checkPArt")
+		             if i==(len(Participant_status)-1){
+		                fmt.Println("checkPArt2")
+		                slice1 := Participant_status[0:i]
+		                slice2 := Participant_status
+		                Participant_status=slice1
+		                
+		                dead <- slice2[i]
+		                fmt.Println("FAEN DET GIKK2")
+		             }else if i==0{
+		                fmt.Println("checkPArt3")
+		                slice1 := Participant_status[i+1:len(Participant_status)];
+		                slice2 := Participant_status
+		                Participant_status=slice1
+		                fmt.Println(slice1,"NESTEN DER")
+		                dead <- slice2[i]
+		                fmt.Println("FAEN DET GIKK3")
+		                i--;
+		                
+		             }else{
+		                fmt.Println("checkPArt4")
+		                slice1 := Participant_status[0:i];
+		                slice2 := Participant_status[i+1:len(Participant_status)];
+		                slice1 = append(slice1, slice2...);
+		                slice3 := Participant_status
+		                Participant_status=slice1;
+		                dead <- slice3[i]
+		                fmt.Println("FAEN DET GIKK4")
+		                i--;
+		                
+		             }
+		          }else{
+		             continue;
+		             }
+	           }
+	           
+	           fmt.Println("HSHSHSHSHSHSHS");
+   
+}
+
+
+
+func Get_dead_elevators_orders(hore Status_struct, got_order chan Order){
+	fmt.Println("indead")
+	fmt.Println(hore)
+	for i:=0; i<N_FLOORS; i++{
+	    for j:=0; j<M_BUTTONS -1; j++{
+		    if hore.Work_array[i][j] == 1{
+		        if j==0{
+		            jobb:=Order{i,"up"}
+		            got_order <- jobb
+		        }else{
+		            jobb := Order{i,"down"}
+			        got_order <- jobb
+			        fmt.Println("OPPORDRE")
+		        }
+			    
+		}
+		
+	}
+		
+		
+		
+	}
+	fmt.Println("outdead")
+}
+
+
+
+
+func Anicic(got_order chan Order, input_order chan Order, command_order chan Order, job chan Order,dead chan Status_struct,is_dead chan bool, participant_info chan Status_struct,light_chan chan [4][3]int){
+            for{
+                    select{
+                            case a := <- got_order:
+                            	fmt.Println(a,"got_order")
+                				   go Cost_function(Participant_status,a,job)
+                            case b := <- input_order:
+                                    //fmt.Println(b)
+                                    Broadcast_order(b)
+                            case c := <- command_order:
+                                    //fmt.Println(c)
+                                    Add_Order_Matrix(c)
+                            case d := <- job:
+                            		//fmt.Println(d)
+                            		Add_Order_Matrix(d)
+                            case e := <- participant_info:
+                            	//fmt.Println(e)
+                            		go Update_participants(e,dead,light_chan)
+                            case f := <-dead:
+                            		fmt.Println(f,"dead")
+                            		go Get_dead_elevators_orders(f,got_order)
+                            		fmt.Println(f,"dead2")
+                            case g := <- is_dead:
+                            		fmt.Println(g)
+                            		Elev_set_speed(0)
+                            		Delete_outside_orders()
+                            		
+                            		
+                            case <- time.After(10*time.Millisecond):
+                                    continue
+                            }
+                    }
+}
+
+
+
+func Delete_outside_orders(){
+    for i:=0; i<N_FLOORS;i++{
+        for j:=0; j<M_BUTTONS-1; j++{
+            Order_matrix[i][j]=0
+        }
+
+    }
+
+}
+
+
+
+
+/*func Close_elevator(kill chan bool){
+    killing := true
+    for i := 0; i<8; i++{
+        kill <- killing
+    }
+}*/
+
+/*func Dead_elevator_routine(kill_listen_status chan bool ,kill_handle_order chan bool,kill_rasshol chan bool,kill_broadcast_status chan bool,kill_anicic chan bool,kill_drive_elevator chan bool){
+	
+	Elev_set_speed(0)	
+    kill_listen_status <- true
+    kill_handle_order <- true
+    kill_rasshol <- true
+    kill_broadcast_status <- true
+    kill_anicic <- true
+    kill_drive_elevator <- true
+    
+    
+    
+    
+    
+    time.Sleep(5000*time.Millisecond)
+}*/
+
+
+
+
+
+//lights
+
+func Listen_for_ext_lights(light_chan chan [4][3]int){
+    var light_array [N_FLOORS][M_BUTTONS]int
+    
+	//fmt.Println("lyyyys",len(Participant_status))
+	for i :=0; i <len(Participant_status); i++{ //gaar gjennom participants
+		for j:=0; j<N_FLOORS; j++{ //gaar gjennom etasjer
+			for k:=0; k<M_BUTTONS-1; k++ { //gaar gjennom buttons
+	            if Participant_status[i].Work_array[j][k] == 1{
+	                light_array[j][k] =1
+	            }
+	        }
+	   }
+    }
+    light_chan <- light_array
+}
+	
+func Set_ext_lights(light_chan chan [4][3]int){
+	var light_array [4][3]int
+	light_array = <- light_chan	
+	for j:=0; j<N_FLOORS; j++{ //gaar gjennom etasjer
+		for k:=0; k<M_BUTTONS-1; k++ { //gaar gjennom buttons
+            if light_array[j][k] == 1 && k==0{
+	            Elev_set_button_lamp(BUTTON_CALL_UP, j, 1)
+            }else if light_array[j][k] == 1 && k==1 {
+	            Elev_set_button_lamp(BUTTON_CALL_DOWN, j, 1)
+            }else if light_array[j][k] == 0 && k==0{
+                Elev_set_button_lamp(BUTTON_CALL_UP, j, 10)
+            }else if light_array[j][k] == 0 && k==1 {
+
+                Elev_set_button_lamp(BUTTON_CALL_DOWN, j, 10)
+            }
+		} 
+	}
+}
+
+
+func Listen_for_int_lights(){
+
+    for i:=0; i < N_FLOORS; i++ {
+        if Order_matrix[i][M_BUTTONS-1]==1 {
+            Elev_set_button_lamp(BUTTON_COMMAND, i, 1)
+        
+        }else{
+            Elev_set_button_lamp(BUTTON_COMMAND, i, 10)
+        }
+
+    }
+
+}
+
+
+
+
+func Drive_elevator(light_chan chan [4][3]int){
+   for{
+        select{
+            default:
+            	Set_speed()
+                Update_last_floor()
+                Update_floor_ligth()
+                n,k:=Stop_at_order()
+                Set_ext_lights(light_chan)
+                Listen_for_int_lights();
+                
+                
+                if k==true{
+                	timer2 := time.Now().Unix()
+				    for{
+				    	fmt.Println(k);
+				   	 	if (timer2 - n) <3 {
+				   	 		timer2 = time.Now().Unix()
+				    		Set_ext_lights(light_chan)
+				    		Listen_for_int_lights();
+				   		 }else{
+				   		 	Elev_set_door_open_lamp(0)
+				    		break;
+				  		 }
+				    }
+           }
+           time.Sleep(10*time.Millisecond)
+   		}
+	}
+}
+
+/*func Lights(kill chan bool){
+    
+    for{
+        select{
+            case a := <- kill:
+                fmt.Println(a)
+                return
+            default:
+                Listen_for_int_lights();
+                Listen_for_ext_lights();
+                Update_floor_ligth()
+                time.Sleep(10*time.Millisecond)
+       }
+    }
+}*/
+
+
+func Update_floor_ligth(){
+    Elev_set_floor_indicator(LAST_FLOOR)
+}
+
+
+
+
+
+
+func Update_participants(stat Status_struct, dead chan Status_struct,light_chan chan [4][3]int){
+	fmt.Println(Participant_status)
+	Update_participant_info(stat)
+	Check_Participants_Alive(dead)
+	Listen_for_ext_lights(light_chan)
+	
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,453 @@
+package Elevator
+
+import (
+	. "../Network"
+	. "../Driver"
+	. "../Variables"
+	"fmt"
+	"time"
+)
+
+
+
+// State-machine for elevator
+func Elevator(got_order chan Order, external_order chan Order, internal_order chan Order, job chan Order, is_dead chan bool, door_closed_chan chan bool, floor_sensor_chan chan int, light_chan chan [4][3]int,quit_chan chan bool) {
+	for {
+		//fmt.Println(Participant_status)
+		//fmt.Println(Order_matrix)
+		select {
+		case b := <-external_order:
+			//fmt.Println(b)
+			Broadcast_order(b)
+		case c := <-internal_order: 
+			if Has_Orders() == false && DOOR == false{
+				fmt.Println("innejobb")
+				Add_Order_Matrix(c)
+				if c.Floor == LAST_FLOOR {
+					fmt.Println("innejobb i samme etasje")
+					Stop_at_order(door_closed_chan,quit_chan)
+					//go Keep_door_open(door_closed_chan)
+				} else {
+					fmt.Println("Setter speed")
+					Set_speed()
+				}
+			} else {
+				fmt.Println("else")
+				Add_Order_Matrix(c)
+				Stop_at_order(door_closed_chan,quit_chan)
+			}
+			Set_int_lights()
+		case d := <-job:
+			if Has_Orders() == false && DOOR == false {
+				fmt.Println("ute i lastfloor")
+				Add_Order_Matrix(d)
+				if d.Floor == LAST_FLOOR {
+					fmt.Println("inne i lastfloor")
+					Stop_at_order(door_closed_chan,quit_chan)
+					//go Keep_door_open(door_closed_chan,quit_chan)
+				} else {
+					Set_speed()
+				}
+			} else {
+				Add_Order_Matrix(d)
+				Stop_at_order(door_closed_chan,quit_chan)
+			}
+		case g := <-is_dead:
+			fmt.Println(g)
+			Delete_outside_orders()
+			Init_network()
+			Emergency_stop()
+			
+		case _ = <-floor_sensor_chan:
+			
+			//fmt.Println("fikk sensor")
+			//fmt.Println(DIRECTION)
+			Update_last_floor()
+			Update_floor_ligth()
+			Stop_at_order(door_closed_chan,quit_chan)
+			Set_int_lights()
+			
+		case _ = <-door_closed_chan:
+			Elev_set_door_open_lamp(0)
+			if Has_Orders() {
+				Set_speed()
+			}
+		case k := <-light_chan:
+			Set_ext_lights(k)
+		case <-time.After(10 * time.Millisecond):
+			continue
+		}
+	}
+}
+
+func Heis_init(door_closed_chan chan bool,quit_chan chan bool) {
+	Elev_init()
+	Elev_set_speed(300)
+	for{
+		if Elev_get_floor_sensor_signal() >=0{
+			Door_handler(door_closed_chan,quit_chan)
+			return	
+		}
+	}
+}
+
+func Has_Orders() (answer bool) {
+	fmt.Println("has orders")
+	for i := 0; i < N_FLOORS; i++ {
+		for j := 0; j < M_BUTTONS; j++ {
+			if Order_matrix[i][j] == 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func Delete_outside_orders() {
+	for i := 0; i < N_FLOORS; i++ {
+		for j := 0; j < M_BUTTONS-1; j++ {
+			Order_matrix[i][j] = 0
+		}
+
+	}
+
+}
+
+// Stopper heisen i etasje
+func Emergency_stop() {
+	for {
+		if Elev_get_floor_sensor_signal() >= 0 {
+			Elev_set_speed(0)
+			MOVING = false
+			break
+		}
+	}
+}
+
+// Leser fra floor indicator og sender på channel dersom endring
+func Read_floor_indicator(floor_sensor_chan chan int) {
+		last := -1
+		for{
+			if Elev_get_floor_sensor_signal() != last && Elev_get_floor_sensor_signal() >= 0 {
+				last = Elev_get_floor_sensor_signal()
+				floor_sensor_chan <- last
+			}
+			time.Sleep(10*time.Millisecond)
+		}	
+}
+
+func Update_last_floor() {
+
+	if Elev_get_floor_sensor_signal() == -1 {
+	} else {
+		LAST_FLOOR = Elev_get_floor_sensor_signal()
+	}
+}
+
+func Set_speed() {
+	if DIRECTION == 1 {
+		if Check_if_more_orders_in_direction(1) == 1 {
+			DIRECTION = 1
+		} else {
+			DIRECTION = 0
+		}
+	} else {
+		if Check_if_more_orders_in_direction(0) == 1 {
+			DIRECTION = 0
+		} else {
+			DIRECTION = 1
+		}
+	}
+	if DIRECTION == 1 {
+		Elev_set_speed(300)
+	} else {
+		Elev_set_speed(-300)
+	}
+	// if Check_if_more_orders_in_direction(0) == 1{
+	// 	Elev_set_speed()
+	// }
+	// DIRECTION = 1
+	// 	if Check_if_more_orders_in_direction() == 1{
+	// 	fmt.Println("setter speed")
+	// 	if DIRECTION == 1 {
+	// 		Elev_set_speed(300)
+	// 	} else if DIRECTION == 0 {
+	// 		Elev_set_speed(-300)
+	// 	}
+	// }
+	// // } else if Check_if_more_orders_in_direction() == 0 {
+	// 	if DIRECTION == 1 {
+	// 		DIRECTION = 0
+	// 	} else if DIRECTION == 0 {
+	// 		DIRECTION = 1
+	// 	} else {
+	// 	}
+	// }
+	MOVING = true
+}
+
+func Door_handler(door_closed_chan chan bool,quit_chan chan bool) {
+	MOVING = false
+	fmt.Println("door handler")
+	if DIRECTION == 0 {
+		Elev_set_speed(20)
+		time.Sleep(30 * time.Millisecond)
+		Elev_set_speed(-20)
+	} else {
+		Elev_set_speed(-20)
+		time.Sleep(30 * time.Millisecond)
+		Elev_set_speed(20)
+	}
+	Elev_set_speed(0)
+	Elev_set_door_open_lamp(1)
+	if DOOR == false{
+		go Keep_door_open(door_closed_chan,quit_chan)
+	}else{
+		quit_chan <- true
+		go Keep_door_open(door_closed_chan,quit_chan)
+	}
+	Remove_order()
+}
+
+func Keep_door_open(door_closed_chan chan bool, quit_chan chan bool){	// Holder døra åpen i 3 sek
+	DOOR = true
+	timer := time.Now().Unix()
+	for {
+		select{
+			case _ =<- quit_chan:
+				return
+			default:
+				if time.Now().Unix()-timer < 3 {
+					time.Sleep(10 * time.Millisecond)
+				} else {
+					door_closed_chan <- true
+					DOOR = false
+					return
+				}
+		}
+	}
+}
+
+func Stop_at_order(door_closed_chan chan bool,quit_chan chan bool) {
+	order_in_dir := Check_if_more_orders_in_direction(DIRECTION)
+	fmt.Println(order_in_dir)
+	if Elev_get_floor_sensor_signal() != -1 {
+		if DIRECTION == 1 {
+			if Order_matrix[LAST_FLOOR][BUTTON_CALL_UP] == 1 {
+				Door_handler(door_closed_chan,quit_chan)
+			} else if Order_matrix[LAST_FLOOR][BUTTON_CALL_DOWN] == 1 {
+				if order_in_dir != 1 {
+					fmt.Println("orderstop", order_in_dir)
+					Door_handler(door_closed_chan,quit_chan)
+				}
+			} else if Order_matrix[LAST_FLOOR][BUTTON_COMMAND] == 1 {
+				fmt.Println("button command")
+				Door_handler(door_closed_chan,quit_chan)
+
+			}
+		} else if DIRECTION == 0 {
+			if Order_matrix[LAST_FLOOR][BUTTON_CALL_DOWN] == 1 {
+				Door_handler(door_closed_chan,quit_chan)
+			} else if Order_matrix[LAST_FLOOR][BUTTON_CALL_UP] == 1 {
+				if order_in_dir != 1 {
+					Door_handler(door_closed_chan,quit_chan)
+				} else if Order_matrix[LAST_FLOOR][BUTTON_COMMAND] == 1 {
+					Door_handler(door_closed_chan,quit_chan)
+				}
+			} else if Order_matrix[LAST_FLOOR][BUTTON_COMMAND] == 1 {
+				Door_handler(door_closed_chan,quit_chan)
+
+			}
+		}
+
+	}
+}
+
+func Check_if_more_orders_in_direction(direction int) (answer int) {
+	if direction == 1 {
+		if LAST_FLOOR == N_FLOORS {
+			return 0
+		}
+		for i := LAST_FLOOR + 1; i < N_FLOORS; i++ {
+			for j := 0; j < M_BUTTONS; j++ {
+				if Order_matrix[i][j] == 1 {
+					return 1
+				} else {
+					continue
+				}
+			}
+		}
+
+	} else if direction == 0 {
+		if LAST_FLOOR == 0 {
+			return 0
+		}
+		for i := LAST_FLOOR - 1; i >= 0; i-- {
+			for j := 0; j < M_BUTTONS; j++ {
+				if Order_matrix[i][j] == 1 {
+					return 1
+				} else {
+					continue
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func Add_Order_Matrix(Next_Order Order) {
+	if Next_Order.Direction == "up" {
+		//fmt.Println("ordermatrix: ute opp")
+		Order_matrix[Next_Order.Floor][0] = 1
+	} else if Next_Order.Direction == "down" {
+		fmt.Println("ordermatrix: ute ned")
+		Order_matrix[Next_Order.Floor][1] = 1
+	} else {
+		//fmt.Println("ordermatrix: inne")
+		Order_matrix[Next_Order.Floor][2] = 1
+		fmt.Println(Order_matrix)
+	}
+}
+
+func Remove_order() {
+
+	order_in_dir := Check_if_more_orders_in_direction(DIRECTION)
+
+	if DIRECTION == 1 {
+		fmt.Println("LOOOOOOKKAAAAAAAAA")
+		if Order_matrix[LAST_FLOOR][BUTTON_CALL_DOWN] == 1 {
+			if order_in_dir != 1 {
+				Order_matrix[LAST_FLOOR][BUTTON_COMMAND] = 0
+				Order_matrix[LAST_FLOOR][BUTTON_CALL_DOWN] = 0
+				Order_matrix[LAST_FLOOR][BUTTON_CALL_UP] = 0
+			} else {
+				Order_matrix[LAST_FLOOR][BUTTON_COMMAND] = 0
+				Order_matrix[LAST_FLOOR][BUTTON_CALL_UP] = 0
+			}
+		} else if Order_matrix[LAST_FLOOR][BUTTON_CALL_UP] == 1 {
+			Order_matrix[LAST_FLOOR][BUTTON_COMMAND] = 0
+			Order_matrix[LAST_FLOOR][BUTTON_CALL_UP] = 0
+		} else if Order_matrix[LAST_FLOOR][BUTTON_COMMAND] == 1 {
+			fmt.Println("commandremove")
+			Order_matrix[LAST_FLOOR][BUTTON_COMMAND] = 0
+		}
+	} else if DIRECTION == 0 {
+		if Order_matrix[LAST_FLOOR][BUTTON_CALL_UP] == 1 {
+			if order_in_dir != 1 {
+				Order_matrix[LAST_FLOOR][BUTTON_COMMAND] = 0
+				Order_matrix[LAST_FLOOR][BUTTON_CALL_UP] = 0
+				Order_matrix[LAST_FLOOR][BUTTON_CALL_DOWN] = 0
+			} else {
+				Order_matrix[LAST_FLOOR][BUTTON_COMMAND] = 0
+				Order_matrix[LAST_FLOOR][BUTTON_CALL_DOWN] = 0
+			}
+
+		} else if Order_matrix[LAST_FLOOR][BUTTON_CALL_DOWN] == 1 {
+			Order_matrix[LAST_FLOOR][BUTTON_COMMAND] = 0
+			Order_matrix[LAST_FLOOR][BUTTON_CALL_DOWN] = 0
+		} else if Order_matrix[LAST_FLOOR][BUTTON_COMMAND] == 1 {
+			Order_matrix[LAST_FLOOR][BUTTON_COMMAND] = 0
+			fmt.Println("commandremove")
+		}
+	}
+
+	//fmt.Println(Order_matrix);
+}
+
+
+func Get_internal_signal(internal_order chan Order) {
+	var recieved_order Order
+	var last [N_FLOORS]int
+	recieved_order.Direction = "indre"
+	for {
+		for i := 0; i < N_FLOORS; i++ {
+			if Elev_get_button_signal(BUTTON_COMMAND, i) != last[i] {
+				last[i] = Elev_get_button_signal(BUTTON_COMMAND, i) 
+				if Elev_get_button_signal(BUTTON_COMMAND, i) == 1 { 
+					recieved_order.Floor = i
+					fmt.Println(recieved_order)
+					internal_order <- recieved_order
+					//fmt.Println("kommet igjennom command")
+				}
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func Get_external_signal(external_order chan Order) {
+	var recieved_order Order
+	var last [2][N_FLOORS]int
+	for {	
+		for i := 0; i < N_FLOORS; i++ {
+			if Elev_get_button_signal(BUTTON_CALL_UP, i) != last[0][i] {
+				last[0][i] = Elev_get_button_signal(BUTTON_CALL_UP, i)
+				if Elev_get_button_signal(BUTTON_CALL_UP, i) == 1 {
+					recieved_order.Floor = i
+					recieved_order.Direction = "up"
+					fmt.Println(recieved_order)
+					external_order <- recieved_order
+					//fmt.Println("kommet igjennom ext")
+
+				}
+			}
+			if Elev_get_button_signal(BUTTON_CALL_DOWN, i) != last[1][i] {
+				last[1][i] = Elev_get_button_signal(BUTTON_CALL_DOWN, i)
+				if Elev_get_button_signal(BUTTON_CALL_DOWN, i) == 1 {
+					recieved_order.Floor = i
+					recieved_order.Direction = "down"
+					external_order <- recieved_order
+				}
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+ 
+
+func Set_ext_lights(light_array [4][3]int) {
+	fmt.Println(light_array)
+	for j := 0; j < N_FLOORS; j++ { //gaar gjennom etasjer
+		for k := 0; k < M_BUTTONS-1; k++ { //gaar gjennom buttons
+			if light_array[j][k] == 1 && k == 0 {
+				Elev_set_button_lamp(BUTTON_CALL_UP, j, 1)
+			} else if light_array[j][k] == 1 && k == 1 {
+				Elev_set_button_lamp(BUTTON_CALL_DOWN, j, 1)
+			} else if light_array[j][k] == 0 && k == 0 {
+				Elev_set_button_lamp(BUTTON_CALL_UP, j, 10)
+			} else if light_array[j][k] == 0 && k == 1 {
+
+				Elev_set_button_lamp(BUTTON_CALL_DOWN, j, 10)
+			}
+		}
+	}
+}
+
+
+
+func Set_int_lights() {
+
+	for i := 0; i < N_FLOORS; i++ {
+		if Order_matrix[i][M_BUTTONS-1] == 1 {
+			Elev_set_button_lamp(BUTTON_COMMAND, i, 1)
+
+		} else {
+			Elev_set_button_lamp(BUTTON_COMMAND, i, 0)
+		}
+
+	}
+
+}
+
+
+func Update_floor_ligth() {
+	Elev_set_floor_indicator(LAST_FLOOR)
+}
+
+
+
+
+
+
+

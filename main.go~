@@ -1,0 +1,46 @@
+package main
+
+import (
+	. "./Network"
+	. "./Elevator"
+	. "./Variables"
+	"fmt"
+	"time"
+)
+
+func main() {
+	
+
+	fmt.Println("STARTA")
+
+	internal_order := make(chan Order, 1)
+	external_order := make(chan Order, 1)
+	got_order := make(chan Order, 1)
+	dead_orders := make(chan Status_struct, 1)
+	job := make(chan Order, 1)
+	participant_info := make(chan Status_struct, 1)
+	is_dead := make(chan bool,1)
+	light_chan := make(chan [4][3]int, 1)
+	door_closed_chan := make(chan bool, 1)
+	floor_sensor_chan := make(chan int, 1)
+	quit_chan := make(chan bool)
+	
+
+	Heis_init(door_closed_chan,quit_chan)
+	
+	go Elevator(got_order,external_order,internal_order,job,is_dead,door_closed_chan,floor_sensor_chan,light_chan,quit_chan)
+	go Network(got_order,participant_info,dead_orders,job,light_chan)
+	go Get_internal_signal(internal_order)
+	go Get_external_signal(external_order)
+	go Read_floor_indicator(floor_sensor_chan)
+	go Handle_order(got_order)
+	go Broadcast_status()
+	go Listen_status(participant_info,Participant_status)
+	go Init_network2(is_dead)
+	
+	
+	
+	
+	
+	time.Sleep(100000000 * time.Millisecond)
+}
