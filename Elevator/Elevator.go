@@ -61,13 +61,19 @@ func Elevator(got_order chan Order, external_order chan Order, internal_order ch
 			Emergency_stop()
 			
 		case  _ =<-floor_sensor_chan:
-			_ = <- same_floor_chan
 			fmt.Println("fikk sensor")
 			//fmt.Println(DIRECTION)
 			Update_last_floor()
 			Update_floor_ligth()
 			Stop_at_order(door_closed_chan,quit_chan,same_floor_chan)
 			Set_int_lights()
+			select{
+				case a := <- same_floor_chan:
+					fmt.Println(a,"flush")
+				default:
+					fmt.Println("do nothing")
+			}
+			
 			
 		case  <-door_closed_chan:
 			Elev_set_door_open_lamp(0)
@@ -133,12 +139,24 @@ func Emergency_stop() {
 }
 
 // Leser fra floor indicator og sender på channel dersom endring
-func Read_floor_indicator(floor_sensor_chan chan int,same_floor_chan chan bool) {
+func Read_floor_indicator(floor_sensor_chan chan int) {
 		last := -1
 		for{
 			if Elev_get_floor_sensor_signal() != last && Elev_get_floor_sensor_signal() >= 0 {
 				last = Elev_get_floor_sensor_signal()
 				floor_sensor_chan <- last
+				fmt.Println("får en ny floor")
+			}
+			time.Sleep(10*time.Millisecond)
+		}	
+}
+
+func Read_same_floor(same_floor_chan chan bool) {
+		last := -1
+		for{
+			if Elev_get_floor_sensor_signal() != last && Elev_get_floor_sensor_signal() >= 0 {
+				last = Elev_get_floor_sensor_signal()
+				fmt.Println("får en ny floor")
 				same_floor_chan <- true
 			}
 			time.Sleep(10*time.Millisecond)
@@ -200,14 +218,15 @@ func Door_handler(door_closed_chan chan bool,quit_chan chan bool, same_floor_cha
 	fmt.Println("door handler")
 	select{
 		case <- same_floor_chan:
+			fmt.Println("Inni casesn")
 			if DIRECTION == 0 {
-				Elev_set_speed(300)
-				time.Sleep(30 * time.Millisecond)
-				Elev_set_speed(-300)
+				Elev_set_speed(200)
+				time.Sleep(10 * time.Millisecond)
+				Elev_set_speed(-200)
 			} else {
-				Elev_set_speed(-300)
-				time.Sleep(30 * time.Millisecond)
-				Elev_set_speed(300)
+				Elev_set_speed(-200)
+				time.Sleep(10 * time.Millisecond)
+				Elev_set_speed(200)
 			}
 			break
 		default:
